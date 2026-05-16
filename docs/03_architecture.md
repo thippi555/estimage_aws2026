@@ -101,6 +101,21 @@ prompt
 
 FM呼び出しが失敗した場合は、ルールベースのサービス検出と規模抽出へフォールバックする。
 
+2段階フローでは、まず `mode=clarify` で不足情報を質問し、次に `mode=estimate` で回答を `answers` として受け取って見積もる。
+
+```text
+mode=clarify
+  -> FM/service detection
+  -> question generation
+  -> answer_schema
+
+mode=estimate
+  -> prompt + answers
+  -> FM/service detection
+  -> Python estimate calculation
+  -> response
+```
+
 ---
 
 ## 5. Foundation Model構成

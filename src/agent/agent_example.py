@@ -192,6 +192,69 @@ User request:
 """.strip()
 
 
+def build_question_prompt(prompt: str, response: dict[str, Any]) -> str:
+    services = ", ".join(response["input"]["detected_services"])
+    scale = json.dumps(response["input"]["scale"], ensure_ascii=False)
+    fallback_questions = json.dumps(response["questions"], ensure_ascii=False)
+    return f"""
+You are an AWS estimate assistant.
+Ask the minimum useful follow-up questions before making a better estimate.
+Return only one JSON object. Do not wrap it in Markdown.
+
+Schema:
+{{
+  "questions": ["short Japanese question"],
+  "answer_schema": {{
+    "field_name": "expected value description"
+  }}
+}}
+
+Rules:
+- Ask at most 5 questions.
+- Ask only questions that materially affect cost.
+- Prefer concrete numeric questions.
+- Use the known services and scale below.
+- Japanese output.
+
+User request:
+{prompt}
+
+Detected services:
+{services}
+
+Current scale:
+{scale}
+
+Fallback questions:
+{fallback_questions}
+""".strip()
+
+
+def generate_fm_questions(prompt: str, response: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    import boto3
+
+    model_id = str(payload.get("model_id") or os.getenv("BEDROCK_MODEL_ID") or "apac.amazon.nova-micro-v1:0")
+    region = str(payload.get("region") or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "ap-northeast-1")
+    client = boto3.client("bedrock-runtime", region_name=region)
+    fm_response = client.converse(
+        modelId=model_id,
+        messages=[
+            {
+                "role": "user",
+                "content": [{"text": build_question_prompt(prompt, response)}],
+            }
+        ],
+        inferenceConfig={
+            "maxTokens": 700,
+            "temperature": 0.0,
+        },
+    )
+    text = fm_response["output"]["message"]["content"][0]["text"]
+    result = parse_json_object(text)
+    result["model_id"] = model_id
+    return result
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
@@ -518,6 +581,96 @@ def build_response(prompt: str, payload: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
+def build_clarify_response(prompt: str, payload: dict[str, Any]) -> dict[str, Any]:
+    response = build_response(prompt, payload)
+    question_source = "rules"
+    answer_schema = build_answer_schema(response["input"]["detected_services"], response["input"]["scale"])
+
+    if should_use_fm(payload):
+        try:
+            fm_questions = generate_fm_questions(prompt, response, payload)
+            questions = fm_questions.get("questions")
+            if isinstance(questions, list) and questions:
+                response["questions"] = [str(question) for question in questions[:5]]
+                answer_schema = fm_questions.get("answer_schema") or answer_schema
+                question_source = "fm"
+        except Exception as exc:
+            response["question_generation_error"] = f"{type(exc).__name__}: {exc}"
+
+    return {
+        "status": "needs_input" if response["questions"] else "ready_to_estimate",
+        "mode": "clarify",
+        "question_source": question_source,
+        "summary": response["summary"],
+        "detected_services": response["input"]["detected_services"],
+        "current_scale": response["input"]["scale"],
+        "fm": response["input"]["fm"],
+        "questions": response["questions"],
+        "answer_schema": answer_schema,
+        "next_request_example": {
+            "mode": "estimate",
+            "prompt": prompt,
+            "use_fm": should_use_fm(payload),
+            "format": payload.get("format", "terminal"),
+            "answers": build_answer_template(answer_schema),
+        },
+    }
+
+
+def merge_answers(payload: dict[str, Any]) -> dict[str, Any]:
+    answers = payload.get("answers")
+    if not isinstance(answers, dict):
+        return payload
+
+    merged = dict(payload)
+    for key, value in answers.items():
+        if key not in {"prompt", "mode", "format", "answers"}:
+            merged[key] = value
+    return merged
+
+
+def build_answer_schema(services: list[str], scale: dict[str, Any]) -> dict[str, str]:
+    schema: dict[str, str] = {}
+
+    if scale["monthly_requests"] == 100_000:
+        schema["monthly_requests"] = "月間リクエスト数。例: 500000"
+    if "s3" in services and scale["storage_gb"] == 20:
+        schema["storage_gb"] = "S3保存容量GB。例: 100"
+    if "cloudfront" in services:
+        schema["data_transfer_gb"] = "CloudFront月間データ転送量GB。例: 300"
+    if "lambda" in services:
+        schema["lambda_memory_mb"] = "LambdaメモリMB。例: 1024"
+        schema["lambda_duration_ms"] = "Lambda平均実行時間ms。例: 800"
+    if "ec2" in services:
+        schema["ec2_instance"] = "EC2インスタンスタイプ。例: t3.small"
+        schema["ec2_count"] = "EC2台数。例: 2"
+    if "rds" in services:
+        schema["rds_instance"] = "RDSインスタンスタイプ。例: db.t4g.small"
+        schema["rds_storage_gb"] = "RDSストレージGB。例: 50"
+        schema["multi_az"] = "RDS Multi-AZの有無。例: true"
+    if "cognito" in services and scale["users"] == 100:
+        schema["users"] = "月間アクティブユーザー数。例: 1000"
+
+    return schema
+
+
+def build_answer_template(answer_schema: dict[str, Any]) -> dict[str, Any]:
+    examples = {
+        "monthly_requests": 500000,
+        "storage_gb": 100,
+        "data_transfer_gb": 300,
+        "lambda_memory_mb": 1024,
+        "lambda_duration_ms": 800,
+        "ec2_instance": "t3.small",
+        "ec2_count": 2,
+        "rds_instance": "db.t4g.small",
+        "rds_storage_gb": 50,
+        "multi_az": False,
+        "users": 1000,
+    }
+    return {key: examples.get(key, "") for key in answer_schema}
+
+
 def render_markdown(response: dict[str, Any]) -> str:
     summary = response["summary"]
     scale = response["input"]["scale"]
@@ -559,8 +712,21 @@ def estimate_agent(payload: dict[str, Any]) -> dict[str, Any]:
     if not prompt:
         prompt = "Lambda, API Gateway, S3 を使った小規模なWeb API"
 
-    response = build_response(prompt, payload)
     output_format = str(payload.get("format", "compact")).lower()
+    mode = str(payload.get("mode", "estimate")).lower()
+    if mode == "clarify":
+        response = build_clarify_response(prompt, payload)
+        if output_format in {"terminal", "message", "chat"}:
+            return {"message": render_clarify_text(response)}
+        if output_format == "full":
+            return response
+        return compact_clarify_response(response)
+
+    payload = merge_answers(payload)
+    response = build_response(prompt, payload)
+    if mode == "estimate":
+        response["status"] = "estimated"
+        response["mode"] = "estimate"
 
     if output_format == "full":
         return response
@@ -572,6 +738,16 @@ def estimate_agent(payload: dict[str, Any]) -> dict[str, Any]:
         return {"json": json.dumps(response, ensure_ascii=True)}
 
     return compact_response(response)
+
+
+def compact_clarify_response(response: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "message": render_clarify_text(response),
+        "status": response["status"],
+        "mode": response["mode"],
+        "questions": response["questions"],
+        "answers": response["next_request_example"]["answers"],
+    }
 
 
 def compact_response(response: dict[str, Any]) -> dict[str, Any]:
@@ -633,6 +809,29 @@ def render_terminal_text(response: dict[str, Any]) -> str:
             "- Provide exact usage numbers for each service.",
             "- Split the estimate into prod, staging, and dev environments.",
             "- Generate a Terraform plan and a cost table together.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_clarify_text(response: dict[str, Any]) -> str:
+    services = ", ".join(response["detected_services"])
+    lines = [
+        "I can estimate this, but I need a few details first.",
+        "",
+        f"Detected services: {services}",
+        "",
+        "Please answer:",
+    ]
+
+    for index, question in enumerate(response["questions"], start=1):
+        lines.append(f"{index}. {question}")
+
+    lines.extend(
+        [
+            "",
+            "Reply with answers like this:",
+            json.dumps(response["next_request_example"]["answers"], ensure_ascii=False),
         ]
     )
     return "\n".join(lines)

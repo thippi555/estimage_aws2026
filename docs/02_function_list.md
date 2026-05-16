@@ -84,7 +84,48 @@ EC2、RDS、Lambda、CloudFrontは詳細条件を一部反映する。
 - RDSがある場合: インスタンスタイプ、ストレージ容量、Multi-AZ有無
 - Cognitoがある場合: 月間アクティブユーザー数
 
-### 1.6 Foundation Modelによる構成抽出
+### 1.6 2段階フロー
+
+`mode` により、質問と見積もりを分けて実行できる。
+
+| mode | 内容 |
+|---|---|
+| `clarify` | 構成抽出後、不足情報の質問と回答用スキーマを返す |
+| `estimate` | `answers` を反映して見積もりを返す |
+
+質問から始める例:
+
+```json
+{
+  "mode": "clarify",
+  "prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり",
+  "format": "terminal",
+  "use_fm": true
+}
+```
+
+`mode=clarify` では、通常は長い詳細JSONではなく、確認したい質問だけを短いメッセージとして返す。詳細な抽出結果を確認したい場合は `format=full` を指定する。
+
+回答して見積もる例:
+
+```json
+{
+  "mode": "estimate",
+  "prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり",
+  "use_fm": true,
+  "format": "terminal",
+  "answers": {
+    "monthly_requests": 500000,
+    "storage_gb": 100,
+    "data_transfer_gb": 300,
+    "lambda_memory_mb": 1024,
+    "lambda_duration_ms": 800,
+    "users": 1000
+  }
+}
+```
+
+### 1.7 Foundation Modelによる構成抽出
 
 `use_fm=true` を指定した場合、Amazon BedrockのFoundation Modelを呼び出して、自然文からサービス一覧と規模情報をJSONとして抽出する。
 
@@ -99,7 +140,9 @@ FM呼び出しに失敗した場合は、従来のルールベース検出にフ
 
 デフォルトモデルはAPACのInference Profile ID `apac.amazon.nova-micro-v1:0` で、`model_id` または環境変数 `BEDROCK_MODEL_ID` で変更できる。
 
-### 1.7 出力形式
+`mode=clarify` では、FMを利用して質問文を生成する。FM質問生成に失敗した場合は、ルールベースの質問にフォールバックする。
+
+### 1.8 出力形式
 
 | format | 内容 |
 |---|---|

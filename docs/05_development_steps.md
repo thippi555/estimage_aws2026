@@ -83,6 +83,18 @@ Foundation Modelを使う確認:
 agentcore invoke '{"prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり。月50万アクセス", "format": "terminal", "use_fm": true}'
 ```
 
+質問から始める確認:
+
+```bash
+agentcore invoke '{"mode": "clarify", "prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり", "format": "terminal", "use_fm": true}'
+```
+
+質問への回答を渡して見積もる確認:
+
+```bash
+agentcore invoke '{"mode": "estimate", "prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり", "format": "terminal", "use_fm": true, "answers": {"monthly_requests": 500000, "storage_gb": 100, "data_transfer_gb": 300, "lambda_memory_mb": 1024, "lambda_duration_ms": 800, "users": 1000}}'
+```
+
 モデルを明示する場合:
 
 ```bash

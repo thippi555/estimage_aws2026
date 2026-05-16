@@ -32,7 +32,7 @@ agents:
     bedrock_agentcore:
       agent_id: estimate_agent-hYssgJD8iA
       agent_arn: arn:aws:bedrock-agentcore:ap-northeast-1:950473446046:runtime/estimate_agent-hYssgJD8iA
-      agent_session_id: a1bcc6f7-a06b-4439-b29c-f87232a5c401
+      agent_session_id: ae2df6d9-9788-4aaa-849f-90c599b1a1de
     codebuild:
       project_name: bedrock-agentcore-estimate_agent-builder
       execution_role: arn:aws:iam::950473446046:role/AmazonBedrockAgentCoreSDKCodeBuild-ap-northeast-1-6524194a5f
