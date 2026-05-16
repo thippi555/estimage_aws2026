@@ -34,6 +34,7 @@ requirements.txt
 
 ```text
 bedrock-agentcore
+boto3
 ```
 
 ## 3. デプロイ
@@ -58,6 +59,12 @@ agentcore invoke '{"prompt": "月1000000リクエスト、50GB。Lambda API Gate
 agentcore invoke '{"prompt": "EC2 1台、RDS、S3 100GBで月額見積もり", "format": "terminal"}'
 ```
 
+詳細条件を指定した確認:
+
+```bash
+agentcore invoke '{"prompt": "EC2 2台、RDS、S3 100GBで月額見積もり", "format": "terminal", "ec2_instance": "t3.small", "ec2_count": 2, "rds_instance": "db.t4g.small", "rds_storage_gb": 50, "multi_az": true}'
+```
+
 詳細JSON:
 
 ```bash
@@ -68,6 +75,18 @@ agentcore invoke '{"prompt": "EC2 1台、RDS、S3 100GBで月額見積もり", "
 
 ```bash
 agentcore invoke '{"prompt": "EC2 1台、RDS、S3 100GBで月額見積もり", "format": "ascii_json"}'
+```
+
+Foundation Modelを使う確認:
+
+```bash
+agentcore invoke '{"prompt": "小規模な社内向けWebアプリ。ログインあり、画像保存、管理画面あり。月50万アクセス", "format": "terminal", "use_fm": true}'
+```
+
+モデルを明示する場合:
+
+```bash
+agentcore invoke '{"prompt": "ログインありの画像投稿Webアプリを見積もり", "format": "full", "use_fm": true, "model_id": "apac.amazon.nova-micro-v1:0"}'
 ```
 
 ## 5. ログ確認
@@ -98,3 +117,7 @@ AgentCore Runtime用の実行ロールには以下が必要。
 - ECRイメージ取得
 - CloudWatch Logs書き込み
 - Bedrockモデル呼び出し
+
+FM利用時に `AccessDeniedException` が出る場合は、Runtime実行ロールに `bedrock:InvokeModel` が付いていること、対象モデルの利用が有効になっていることを確認する。
+
+`Invocation of model ID amazon.nova-micro-v1:0 with on-demand throughput isn't supported` が出る場合は、直指定モデルIDではなくInference Profile ID `apac.amazon.nova-micro-v1:0` を使う。

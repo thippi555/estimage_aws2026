@@ -29,6 +29,7 @@
 | `ec2` | Amazon EC2 | ec2, instance, vm |
 | `cloudfront` | Amazon CloudFront | cloudfront, cdn |
 | `bedrock` | Amazon Bedrock | bedrock, claude, nova, llm |
+| `cognito` | Amazon Cognito | cognito, ログイン, 認証 |
 | `cloudwatch` | Amazon CloudWatch | cloudwatch, logs, 監視 |
 
 サービス指定がない場合は、初期構成として `lambda`, `api_gateway`, `s3`, `cloudwatch` を使う。
@@ -44,6 +45,14 @@
 | `monthly_requests` | `100000` | 月間リクエスト数 |
 | `storage_gb` | `20` | 保存容量GB |
 | `currency` | `USD` | 基準通貨 |
+| `data_transfer_gb` | `storage_gb` と同じ | CloudFront等の月間データ転送量 |
+| `lambda_memory_mb` | `512` | Lambdaメモリ |
+| `lambda_duration_ms` | `500` | Lambda平均実行時間 |
+| `ec2_instance` | `t3.micro` | EC2インスタンスタイプ |
+| `ec2_count` | `1` | EC2台数 |
+| `rds_instance` | `db.t4g.micro` | RDSインスタンスタイプ |
+| `rds_storage_gb` | `20` | RDSストレージ容量 |
+| `multi_az` | `false` | RDS Multi-AZ構成 |
 
 JSONで明示された値は自然文から抽出した値より優先する。
 
@@ -53,7 +62,44 @@ JSONで明示された値は自然文から抽出した値より優先する。
 
 現段階ではラフ見積もりであり、AWS Pricing APIとは連携していない。
 
-### 1.5 出力形式
+EC2、RDS、Lambda、CloudFrontは詳細条件を一部反映する。
+
+| サービス | 反映する条件 |
+|---|---|
+| Lambda | `monthly_requests`, `lambda_memory_mb`, `lambda_duration_ms` |
+| EC2 | `ec2_instance`, `ec2_count` |
+| RDS | `rds_instance`, `rds_storage_gb`, `multi_az` |
+| CloudFront | `data_transfer_gb` |
+
+### 1.5 不足情報の質問生成
+
+検出されたサービスに応じて、追加確認したい項目を返す。
+
+例:
+
+- S3がある場合: 保存容量
+- CloudFrontがある場合: 月間データ転送量
+- Lambdaがある場合: メモリ、平均実行時間
+- EC2がある場合: インスタンスタイプ、台数
+- RDSがある場合: インスタンスタイプ、ストレージ容量、Multi-AZ有無
+- Cognitoがある場合: 月間アクティブユーザー数
+
+### 1.6 Foundation Modelによる構成抽出
+
+`use_fm=true` を指定した場合、Amazon BedrockのFoundation Modelを呼び出して、自然文からサービス一覧と規模情報をJSONとして抽出する。
+
+FMの役割は料金計算ではなく、以下の補助である。
+
+- 曖昧な自然文からAWSサービス候補を補完する
+- 「ログインあり」からCognitoなどを推定する
+- 月間アクセス数や保存容量を構造化する
+- 抽出できない値は `null` として扱う
+
+FM呼び出しに失敗した場合は、従来のルールベース検出にフォールバックする。
+
+デフォルトモデルはAPACのInference Profile ID `apac.amazon.nova-micro-v1:0` で、`model_id` または環境変数 `BEDROCK_MODEL_ID` で変更できる。
+
+### 1.7 出力形式
 
 | format | 内容 |
 |---|---|
@@ -66,7 +112,7 @@ JSONで明示された値は自然文から抽出した値より優先する。
 ## 2. 未実装・今後の候補
 
 - AWS Pricing API連携
-- Bedrockモデルによる自然文解析
+- Bedrockモデルによる自然文解析の精度改善
 - EC2/RDSインスタンスサイズ別見積もり
 - Multi-AZ / Single-AZ の切り替え
 - ALB / NAT Gateway / EBS / データ転送の詳細見積もり

@@ -87,7 +87,19 @@ agentcore invoke
   -> JSON response
 ```
 
-現段階ではFoundation Model呼び出しは行わず、Pythonコード内のルールベース処理で見積もりを生成する。
+通常時はPythonコード内のルールベース処理で見積もりを生成する。
+
+`use_fm=true` の場合は、見積もり計算前にBedrock Foundation Modelを呼び出し、自然文を構造化する。
+
+```text
+prompt
+  -> Bedrock FM extraction
+  -> services / scale JSON
+  -> Python estimate calculation
+  -> JSON response
+```
+
+FM呼び出しが失敗した場合は、ルールベースのサービス検出と規模抽出へフォールバックする。
 
 ---
 
@@ -102,9 +114,11 @@ agentcore invoke
 
 モデル選定はコストと品質を見ながら切り替える。
 
-現在はコスト抑制と疎通確認を優先し、Foundation Model連携は未実装である。
+現在は `use_fm=true` 指定時のみFoundation Modelを利用する。
 
-次段階で、自然文からの構成抽出や見積もり説明文生成にBedrockモデルを利用する。
+FMは自然文からの構成抽出に利用し、料金計算はPython側の簡易単価表で行う。
+
+次段階で、見積もり説明文生成や不足条件の質問生成にもBedrockモデルを利用する。
 
 ---
 

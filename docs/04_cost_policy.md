@@ -15,10 +15,13 @@
 | AWS CodeBuild | AgentCoreデプロイ時のコンテナビルド |
 | AWS IAM | 実行ロール・デプロイ権限 |
 | Amazon CloudWatch Logs | Runtimeログ |
+| Amazon Bedrock Foundation Model | `use_fm=true` 指定時の構成抽出 |
 
 ## 3. 現在の見積もり方式
 
 現在のエージェントは、AWS公式料金APIではなく、コード内の簡易単価表を使って概算を返す。
+
+`use_fm=true` の場合、Bedrock Foundation Modelの推論料金が追加で発生する。FMは料金計算ではなく、自然文から構成を抽出するために利用する。
 
 この方式は以下を目的とする。
 
