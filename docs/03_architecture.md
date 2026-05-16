@@ -75,6 +75,20 @@ Runtime は以下を担当する。
 - セッション管理
 - コンテナ分離実行
 
+現在の実装では、Runtime上で `src/agent/agent_example.py` を起動する。
+
+エントリポイントは `BedrockAgentCoreApp` を利用し、`payload` の `prompt` を処理して見積もり結果を返す。
+
+```text
+agentcore invoke
+  -> Bedrock AgentCore Runtime
+  -> src/agent/agent_example.py
+  -> service detection / scale parsing / estimate calculation
+  -> JSON response
+```
+
+現段階ではFoundation Model呼び出しは行わず、Pythonコード内のルールベース処理で見積もりを生成する。
+
 ---
 
 ## 5. Foundation Model構成
@@ -87,6 +101,10 @@ Runtime は以下を担当する。
 | Nova | コスト重視処理 |
 
 モデル選定はコストと品質を見ながら切り替える。
+
+現在はコスト抑制と疎通確認を優先し、Foundation Model連携は未実装である。
+
+次段階で、自然文からの構成抽出や見積もり説明文生成にBedrockモデルを利用する。
 
 ---
 
